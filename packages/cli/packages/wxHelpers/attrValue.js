@@ -37,6 +37,7 @@ module.exports = function (astPath) {
         case 'UnaryExpression':  // !a
         case 'ConditionalExpression':// a ? b: c
         case 'MemberExpression': // aa.bbb
+        case 'ArrayExpression':
             replaceWithExpr(astPath, attrValue);
             break;
         case 'CallExpression': // fn(a)
