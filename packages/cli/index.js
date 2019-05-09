@@ -5,6 +5,8 @@ const globalConfig = require('./config/config.js');
 const runBeforeParseTasks = require('./commands/runBeforeParseTasks');
 const platforms = require('./consts/platforms');
 const utils = require('./packages/utils/index');
+const { errorLog, warningLog } = require('./nanachi-loader/logger/index');
+const { build: buildLog } = require('./nanachi-loader/logger/queue');
 
 const babel = require('@babel/core');
 const spawn = require('child_process').spawnSync;
@@ -66,6 +68,39 @@ function validatePlatform(platform) {
     });
 }
 
+function showLog() {
+    if ( utils.isMportalEnv() ) {
+        let log = '';
+        while (buildLog.length) {
+            log += buildLog.shift() + (buildLog.length !== 0 ? '\n' : '');
+        }
+        // eslint-disable-next-line
+        console.log(log);
+    }
+    const errorStack = require('./nanachi-loader/logger/queue');
+    while (errorStack.warning.length) {
+        warningLog(errorStack.warning.shift());
+    }
+    
+    if (errorStack.error.length) {
+        errorStack.error.forEach(function(error){
+            errorLog(error);
+        });
+        if ( utils.isMportalEnv() ) {
+            process.exit(1);
+        }
+    }
+}
+
+function cleanLog(log) {
+    // 清理eslint stylelint错误日志内容
+    const reg = /[\s\S]*Module (Error|Warning)\s*\(.*?(es|style)lint.*?\):\n+/gm;
+    if (reg.test(log)) {
+        return log.replace(/^\s*@[\s\S]*$/gm, '').replace(reg, '');
+    }
+    return log;
+}
+
 async function nanachi({
     // entry = './source/app', // TODO: 入口文件配置暂时不支持
     watch = false,
@@ -73,6 +108,7 @@ async function nanachi({
     beta = false,
     betaUi = false,
     compress = false,
+    compressOption = {},
     huawei = false,
     rules = [],
     prevLoaders = [], // 自定义预处理loaders
@@ -88,11 +124,12 @@ async function nanachi({
             return;
         }
 
+        showLog();
         const info = stats.toJson();
         if (stats.hasErrors()) {
             info.errors.forEach(e => {
                 // eslint-disable-next-line
-                console.error(e);
+                console.error(cleanLog(e));
                 if (utils.isMportalEnv()) {
                     process.exit();
                 }
@@ -101,7 +138,7 @@ async function nanachi({
         if (stats.hasWarnings()) {
             info.warnings.forEach(warning => {
                 // eslint-disable-next-line
-                console.warn(warning);
+                console.warn(cleanLog(warning));
             });
         }
         complete(err, stats);
@@ -136,6 +173,7 @@ async function nanachi({
         const webpackConfig = require('./config/webpackConfig')({
             platform,
             compress,
+            compressOption,
             beta,
             betaUi,
             plugins,

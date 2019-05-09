@@ -1,7 +1,8 @@
 const NanachiWebpackPlugin = require('../nanachi-loader/plugin');
-const StylelintWebpackPlugin = require('stylelint-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const path = require('path');
 const cwd = process.cwd();
+const utils = require('../packages/utils/index');
 //各种loader
 //生成文件
 const fileLoader = require.resolve('../nanachi-loader/loaders/fileLoader');
@@ -11,7 +12,7 @@ const aliasLoader = require.resolve('../nanachi-loader/loaders/aliasLoader');
 const nanachiLoader = require.resolve('../nanachi-loader/loaders/nanachiLoader');
 //将第三方依赖库复制到npm目录中
 const nodeLoader = require.resolve('../nanachi-loader/loaders/nodeLoader');
- //处理华为快应用
+//处理华为快应用
 const reactLoader = require.resolve('../nanachi-loader/loaders/reactLoader');
 
 //处理 style
@@ -20,6 +21,7 @@ const nanachiStyleLoader  = require.resolve('../nanachi-loader/loaders/nanachiSt
 module.exports = function({
     platform,
     compress,
+    compressOption,
     plugins,
     rules,
     prevLoaders, // 自定义预处理loaders
@@ -31,6 +33,14 @@ module.exports = function({
         aliasMap[alias] = path.resolve(cwd, aliasMap[alias]);
     });
     const distPath = path.resolve(cwd, platform === 'quick' ? './src' : './dist');
+
+    const copyPluginOption = compress ? {
+        transform(content, path) {
+            const type = path.replace(/.*\.(.*)$/, '$1');
+            return utils.compressImage(content, type, compressOption);
+        },
+        // cache: true,
+    } : null;
 
     var mergeRule = [].concat(
         {
@@ -44,14 +54,17 @@ module.exports = function({
                 {
                     loader: require.resolve('eslint-loader'),
                     options: {
-                        configFile: require.resolve(`./eslint/.eslintrc-${platform}.js`)
+                        configFile: require.resolve(`./eslint/.eslintrc-${platform}.js`),
+                        failOnError: utils.isMportalEnv(),
+                        allowInlineConfig: false, // 不允许使用注释配置eslint规则
+                        useEslintrc: false // 不使用用户自定义eslintrc配置
                     }
                 },
                 prevLoaders ) ,
-            exclude: /node_modules[\\\/](?!schnee-ui[\\\/])|React/,
+            exclude: /node_modules[\\/](?!schnee-ui[\\/])|React/,
         },
         {
-            test: /node_modules[\\\/](?!schnee-ui[\\\/])/,
+            test: /node_modules[\\/](?!schnee-ui[\\/])/,
             use: [].concat(
                 fileLoader, 
                 postLoaders, 
@@ -72,13 +85,10 @@ module.exports = function({
                 fileLoader, 
                 postLoaders, 
                 aliasLoader, 
-                nanachiStyleLoader, 
+                nanachiStyleLoader,
                 prevLoaders)
         },
         rules);
-
-
-    
 
     return {
         entry: './source/app',
@@ -95,9 +105,17 @@ module.exports = function({
                 platform,
                 compress
             }),
-            // 样式检查插件，应用stylelint配置
-            new StylelintWebpackPlugin({
-                configFile: require.resolve(`./stylelint/.stylelint-${platform}.config.js`)
+            new CopyWebpackPlugin([
+                {
+                    from: '**',
+                    to: 'assets',
+                    context: 'source/assets',
+                    ...copyPluginOption // 压缩图片配置
+                }
+            ], {
+                ignore: [
+                    '**/*.@(js|jsx|json|sass|scss|less|css)'
+                ]
             }),
             plugins),
         resolve: {
