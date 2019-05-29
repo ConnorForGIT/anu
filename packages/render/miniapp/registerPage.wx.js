@@ -1,16 +1,13 @@
 import { isFn} from 'react-core/util';
 import { dispatchEvent } from './eventSystem';
 import { onLoad, onUnload, onReady } from './registerPage.all';
-import { callGlobalHook,_getApp } from './utils';
-var globalHooks = {
+import { _getApp } from './utils';
+var appHooks = {
     onShare: 'onGlobalShare',
     onShow: 'onGlobalShow',
     onHide: 'onGlobalHide'
 };
-var showHideHooks = {
-    onShow: 'componentDidShow',
-    onHide: 'componentDidHide'
-};
+
 export function registerPage(PageClass, path, testObject) {
     PageClass.reactInstances = [];
     let config = {
@@ -23,25 +20,27 @@ export function registerPage(PageClass, path, testObject) {
         onUnload: onUnload
     };
     Array(
-        'onPageScroll',
         'onShareAppMessage',
+        'onPageScroll',
         'onReachBottom',
         'onPullDownRefresh',
+        'onTabItemTap',
         'onResize',
         'onShow',
         'onHide'
     ).forEach(function(hook) {
         config[hook] = function(e) {
             let instance = this.reactInstance,
-             fn = instance[hook], 
-             fired = false,
+             pageHook = hook,
              param = e 
-            if (hook === 'onShareAppMessage'){
-                hook = 'onShare';
-                fn = fn || instance[hook];
-            } else if (hook === 'onShow'){
-                if(this.options){ //支付宝小程序不存在
-                   instance.props.query =  this.options ;
+            if (pageHook === 'onShareAppMessage'){
+                if( !instance.onShare){
+                    instance.onShare = instance.onShareAppMessage
+                }
+                pageHook = 'onShare';
+            } else if (pageHook === 'onShow'){
+                if(this.options){ //支付宝小程序不存在this.options
+                   instance.props.query = this.options ;
                 }
                 param = instance.props.query
                 //在百度小程序，从A页面跳转到B页面，模拟器下是先触发A的onHide再触发B的onShow
@@ -50,25 +49,15 @@ export function registerPage(PageClass, path, testObject) {
                 _getApp().$$page = this;
                 _getApp().$$pagePath = instance.props.path;
             }
-            if (isFn(fn)) {//页面级别
-                fired = true;
-                var ret =  fn.call(instance, param);
-                if (hook === 'onShare'){
-                    return ret;
+            for(let i = 0; i < 2; i ++){
+                let method = i ? appHooks[pageHook]: pageHook;
+                let host = i ?  _getApp(): instance;
+                if( method && host && isFn(host[method]) ){
+                   let ret = host[method](param);
+                   if(ret !== void 0){
+                       return ret;
+                   }
                 }
-            }
-            var globalHook = globalHooks[hook];
-            if (globalHook){//应用级别
-                ret = callGlobalHook(globalHook, param);
-                if (hook === 'onShare'){
-                    return ret;
-                }
-            }
-
-            let discarded = showHideHooks[hook];
-            if (!fired && instance[discarded]){
-                console.warn(`${discarded} 已经被废弃，请使用${hook}`); //eslint-disable-line
-                instance[discarded](param);
             }
         };
     });

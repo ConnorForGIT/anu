@@ -3,6 +3,7 @@ const path = require('path');
 const cwd = process.cwd();
 const globalConfig = require('./config/config.js');
 const runBeforeParseTasks = require('./commands/runBeforeParseTasks');
+const createH5Server = require('./commands/createH5Server');
 const platforms = require('./consts/platforms');
 const utils = require('./packages/utils/index');
 const { errorLog, warningLog } = require('./nanachi-loader/logger/index');
@@ -62,12 +63,6 @@ function injectBuildEnv({ buildType, compress, huawei } = {}) {
     }
 }
 
-function validatePlatform(platform) {
-    return platforms.some((p) => {
-        return p.buildType === platform;
-    });
-}
-
 function showLog() {
     if ( utils.isMportalEnv() ) {
         let log = '';
@@ -92,15 +87,6 @@ function showLog() {
     }
 }
 
-function cleanLog(log) {
-    // 清理eslint stylelint错误日志内容
-    const reg = /[\s\S]*Module (Error|Warning)\s*\(.*?(es|style)lint.*?\):\n+/gm;
-    if (reg.test(log)) {
-        return log.replace(/^\s*@[\s\S]*$/gm, '').replace(reg, '');
-    }
-    return log;
-}
-
 async function nanachi({
     // entry = './source/app', // TODO: 入口文件配置暂时不支持
     watch = false,
@@ -114,46 +100,53 @@ async function nanachi({
     prevLoaders = [], // 自定义预处理loaders
     postLoaders = [], // 自定义后处理loaders
     plugins = [],
+    analysis = false,
+    silent = false, // 是否显示warning
+    // maxAssetSize = 20480, // 最大资源限制，超出报warning
     complete = () => { }
 } = {}) {
     function callback(err, stats) {
-
         if (err) {
             // eslint-disable-next-line
             console.log(err);
             return;
         }
-
+       
         showLog();
         const info = stats.toJson();
         if (stats.hasErrors()) {
             info.errors.forEach(e => {
                 // eslint-disable-next-line
-                console.error(cleanLog(e));
+                console.error(utils.cleanLog(e));
                 if (utils.isMportalEnv()) {
                     process.exit();
                 }
             });
         }
-        if (stats.hasWarnings()) {
+        if (stats.hasWarnings() && !silent) {
             info.warnings.forEach(warning => {
                 // eslint-disable-next-line
-                console.warn(cleanLog(warning));
+                console.warn(utils.cleanLog(warning));
             });
         }
+
+        if (platform === 'h5') {
+            const webpackH5Config = require('./config/h5/webpack.config.js');
+            const compilerH5 = webpack(webpackH5Config);
+            if (watch) {
+                createH5Server(compilerH5);
+            } else {
+                compilerH5.run();
+            }
+        }
+
         complete(err, stats);
     }
     try {
 
-        if (!validatePlatform(platform)) {
+        if (!utils.validatePlatform(platform, platforms)) {
             throw new Error(`不支持的platform：${platform}`);
         }
-
-        if (platform === 'h5') {
-            require(`mini-html5/runkit/${watch ? 'run' : 'build'}`);
-            return;
-        }
-
 
         injectBuildEnv({
             buildType: platform,
@@ -163,11 +156,13 @@ async function nanachi({
 
         getWebViewRules();
 
+        await runBeforeParseTasks({ buildType: platform, beta, betaUi, compress });
+
         // 添加解码中文字符loader
         // postLoaders.unshift(require.resolve('./nanachi-loader/loaders/decodeChineseLoader'));
         if (compress) {
             // 添加代码压缩loader
-            postLoaders.unshift(require.resolve('nanachi-compress-loader'));
+            postLoaders.unshift('nanachi-compress-loader');
         }
 
         const webpackConfig = require('./config/webpackConfig')({
@@ -177,12 +172,12 @@ async function nanachi({
             beta,
             betaUi,
             plugins,
+            analysis,
             prevLoaders,
             postLoaders,
-            rules
+            rules,
+            // maxAssetSize
         });
-
-        await runBeforeParseTasks({ buildType: platform, beta, betaUi });
 
         const compiler = webpack(webpackConfig);
 

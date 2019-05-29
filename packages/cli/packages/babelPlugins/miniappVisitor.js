@@ -15,7 +15,7 @@ const quickFiles = require('../quickHelpers/quickFiles');
 const quickConfig = require('../quickHelpers/config');
 /* eslint no-console: 0 */
 const helpers = require(`../${config[buildType].helpers}/index`);
-const deps = [];
+//const deps = [];
 //微信的文本节点，需要处理换行符
 const inlineElement = {
     text: 1,
@@ -55,8 +55,8 @@ if (buildType == 'quick') {
 }
 
 function registerPageOrComponent(name, path, modules) {
-    if (name == modules.className) {
-        path.insertBefore(modules.registerStatement);
+   if (name == modules.className) {
+      path.insertBefore(modules.registerStatement);
     }
 }
 /**
@@ -164,6 +164,7 @@ module.exports = {
                 !modules.registerStatement //防止重复进入
             ) {
                 //需要想办法处理无状态组件
+                modules.className = name;
                 helpers.render.exit(astPath, '无状态组件', name, modules);
                 modules.registerStatement = utils.createRegisterStatement(
                     name,
@@ -188,6 +189,15 @@ module.exports = {
         let specifiers = node.specifiers;
         var extraModules = modules.extraModules;
 
+        if (/\.(less|scss|sass|css)$/.test(path.extname(source))) {
+            if(modules.componentType === 'Component'){
+                if (/\/pages\//.test(source)) {
+                    throw '"'+modules.className+'"组件越级不能引用pages下面的样式\n\t'+source
+                }
+            }
+            extraModules.push(source);
+            astPath.remove();
+        }
         if (modules.componentType === 'App') {
             //收集页面上的依赖，构成app.json的pages数组或manifest.json中routes数组
             if (/\/pages\//.test(source)) {
@@ -198,20 +208,23 @@ module.exports = {
 
                 astPath.remove(); //移除分析依赖用的引用
             }
-        }
-
-        if (/\.(less|scss|sass|css)$/.test(path.extname(source))) {
-            // 存下删除的依赖路径
-            extraModules.push(source);
-            astPath.remove();
-        }
-
-        specifiers.forEach(item => {
-            //重点，保持所有引入的组件名及它们的路径，用于<import />
+        } else {
+            // 如果当前页面依赖于某些JS文件，将它的.js后缀去掉
             if (/\.js$/.test(source)) {
                 source = source.replace(/\.js$/, '');
             }
-
+           // 如果当前页面就是一个组件，它必须在components目录中
+            if( /\/components\//.test(modules.current)){
+                //这时还没有解析到函数体或类结构，不知道当前组件叫什么名字
+                if(!modules.className ){
+                    var segments = modules.current.match(/[\w\.]+/g)
+                    modules.className = segments[segments.length-2]
+                }
+            }
+            
+        }
+        specifiers.forEach(item => {
+            //重点，保持所有引入的组件名及它们的路径，用于<import />
             modules.importComponents[item.local.name] = {
                 astPath: astPath,
                 source: source
@@ -222,6 +235,27 @@ module.exports = {
     Program: {
         exit(astPath, state){
             var modules = utils.getAnu(state);
+        //支付宝的自定义组件机制实现有问题，必须要在json.usingComponents引入了这个类
+        //这个类所在的JS 文件才会加入Component全局函数，否则会报Component不存在的BUG
+        //一般来说，我们在页面引入了某个组件，它肯定在json.usingComponents中，只有少数间接引入的父类没有引入
+        //因此在子类的json.usingComponents添加父类名
+        //好像支付宝小程序(0.25.1-beta.0)已经不需要添加父类了
+        // 下面代码是从wxHelper/render中挪过来的
+            const parentClass = modules.parentName;
+            if (
+                config.buildType === 'ali' && 
+                modules.componentType === 'Component' &&
+                parentClass !== 'Object'                
+            ){
+                for(var i in modules.importComponents){  
+                    var value = modules.importComponents[i];
+                    if(value.astPath && i === parentClass){
+                        modules.usedComponents['anu-' +i.toLowerCase()] = 
+                            utils.getUsedComponentsPath(value, i, modules)
+                        value.astPath = null;     
+                    }
+                }
+            }
             /**
              * 将生成 JSON 文件的逻辑从 ExportDefaultDeclaration 移除
              * 放入 Program，确保在 babel 的 ast 树解析的最后才执行生成 JSON 文件的逻辑
@@ -230,7 +264,7 @@ module.exports = {
                 return;
             }
             var json = modules.config;
-
+        
             //将app.js中的import语句变成pages数组
             if (modules.componentType === 'App') {
                 json.pages = modules.pages;
@@ -268,10 +302,17 @@ module.exports = {
                 
                 //merge ${buildType}Config.json
                 json = require('../utils/mergeConfigJson')(modules, json);
-                
-                
+
+
+               
+                if (/\/node_modules\//.test(modules.sourcePath.replace(/\\/g, '/'))) {
+                    relPath = 'npm/' + path.relative( path.join(cwd, 'node_modules'), modules.sourcePath);
+                } else {
+                    relPath =  path.relative(path.resolve(cwd, 'source'), modules.sourcePath);
+                }
+             
                 modules.queue.push({
-                    path: path.relative(path.resolve(cwd, 'source'), modules.sourcePath),
+                    path: relPath,
                     code: JSON.stringify(json, null, 4),
                     type: 'json'
                 });
@@ -281,15 +322,18 @@ module.exports = {
     ExportDefaultDeclaration: {
         exit(astPath, state) {
             var modules = utils.getAnu(state);
+          
             if (/Page|Component/.test(modules.componentType)) {
                 let declaration = astPath.node.declaration;
+                let name =  declaration.name
                 if (declaration.type == 'FunctionDeclaration') {
                     //将export default function AAA(){}的方法提到前面
                     astPath.insertBefore(declaration);
                     astPath.node.declaration = declaration.id;
+                    name = declaration.id.name
                 }
                 //延后插入createPage语句在其同名的export语句前
-                registerPageOrComponent(declaration.name, astPath, modules);
+                registerPageOrComponent(name , astPath, modules);
             }
         }
     },
@@ -514,13 +558,6 @@ module.exports = {
 
 
             if (bag) {
-                //好像不支持render props后，它就没有用了
-                // deps[nodeName] ||
-                //     (deps[nodeName] = {
-                //         set: new Set()
-                //     });
-                // astPath.componentName = nodeName;
-
                 try {
                     // 存下删除的依赖路径
                     if (bag.source !== 'schnee-ui') modules.extraModules.push(bag.source);
@@ -581,6 +618,7 @@ module.exports = {
                 if (attrName === 'src' && /^(@assets)/.test(srcValue)) {
                     let realAssetsPath = path.join(
                         process.cwd(),
+                        'source',
                         srcValue.replace(/@/, '')
                     );
                     let relativePath = path.relative(

@@ -2,8 +2,8 @@
 
 const t = require('@babel/types');
 const generate = require('@babel/generator').default;
-const getStyleValue = require('../utils/getStyleValue');
 const buildType = require('../../config/config').buildType;
+const calculateStyleString = require('../utils/calculateStyleString');
 
 module.exports = function (astPath) {
   
@@ -64,7 +64,7 @@ module.exports = function (astPath) {
             //通过style={{a:1,b:1}}
             //变成style="{{props.style4338}}"
             if (attrName === 'style') {
-                replaceWithExpr(astPath, getStyleValue(expr), true);
+                replaceWithExpr(astPath, calculateStyleString(expr), true);
             }
 
             //不转译 Spread 运算。{{...a}} 
@@ -109,15 +109,19 @@ function replaceWithExpr(astPath, value, noBracket) {
 }
 
 function bindEvent(astPath, attrName, expr) {
-    let eventHandle = generate(expr).code;
-    if (!/^\s*\w+\./.test(eventHandle)) {
-        throwEventValue(attrName, eventHandle);
+    if(expr.type === 'ArrowFunctionExpression'){
+        replaceWithExpr(astPath, 'dispatchEvent', true);
+    }else{
+        let eventHandle = generate(expr).code;
+        if (!/^\s*\w+\./.test(eventHandle)) {
+            throwEventValue(attrName, eventHandle);
+        }
+        if (buildType == 'quick') {
+            let n = attrName.charAt(0) === 'o' ? 2 : 5;
+            astPath.parent.name.name = 'on' + attrName.slice(n).toLowerCase();
+        }
+        replaceWithExpr(astPath, 'dispatchEvent', true);
     }
-    if (buildType == 'quick') {
-        let n = attrName.charAt(0) === 'o' ? 2 : 5;
-        astPath.parent.name.name = 'on' + attrName.slice(n).toLowerCase();
-    }
-    replaceWithExpr(astPath, 'dispatchEvent', true);
 }
 function toString(node) {
     if (t.isStringLiteral(node)) return node.value;

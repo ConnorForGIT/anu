@@ -8,17 +8,16 @@ const ora = require('ora');
 const glob = require('glob');
 const { REACT_LIB_MAP } = require('../consts/index');
 const utils = require('../packages/utils/index');
-
+const nodeResolve = require('resolve');
 
 const cliRoot = path.resolve(__dirname, '..');
-const isWin = process.platform === 'win32';
 
 //删除dist目录, 以及快应的各配置文件
 function getRubbishFiles(buildType){
     let fileList = ['package-lock.json', 'yarn.lock'];
     buildType !== 'quick'
         ? fileList = fileList.concat(['dist', 'build', 'sign', 'src', 'babel.config.js'])
-        : fileList = fileList.concat(['dist']);
+        : fileList = fileList.concat([utils.getDistName(buildType)]);
 
     //构建应用时，要删除source目录下其他的 React lib 文件。
     let libList = Object.keys(REACT_LIB_MAP)
@@ -125,27 +124,40 @@ function getReactLibFile(ReactLibName) {
     }
 }
 
-
 function getAssetsFile( buildType ) {
+    let quickConfig;
+    try {
+        quickConfig = require(path.resolve(cwd, 'source', 'quickConfig.json'));
+    } catch (err) {
+        // quickConfig可能不存在
+    }
     const assetsDir = path.join(cwd, 'source', 'assets');
     let files = glob.sync( assetsDir+'/**', {nodir: true});
-    files = files
-    .filter(function(id){
+    
+    files = files.filter(function(id){
         //过滤js, css, sass, scss, less, json文件
-        return !/\.(js|scss|sass|less|css|json)$/.test(id)
-    })
-    .map(function(id){
-        let sourceReg = isWin ? /\\source\\/ : /\/source\//;
+        return !/\.(js|scss|sass|less|css|json)$/.test(id);
+    });
+    if (quickConfig && quickConfig.router && quickConfig.router.widgets) {
+        Object.keys(quickConfig.router.widgets).forEach(key => {
+            let widgetPath = quickConfig.router.widgets[key].path;
+            if (widgetPath) {
+                widgetPath = path.join(cwd, 'source', widgetPath);
+                const widgetFiles = glob.sync( widgetPath + '/**', {nodir: true});
+                files = files.concat(widgetFiles);
+            }
+        });
+    }
+    files = files.map(function(id){
+        let sourceReg = /[\\/]source[\\/]/;
         let dist = id.replace(sourceReg, buildType === 'quick' ? `${path.sep}src${path.sep}` : `${path.sep}dist${path.sep}`);
         return {
             id: id,
             dist: dist ,
             ACTION_TYPE: 'COPY'
-        }
+        };
     });
-    
     return files;
-
 }
 
 //copy project.config.json
@@ -194,11 +206,25 @@ function needInstallHapToolkit(){
     }
 }
 
-async function runTask({ buildType, beta, betaUi }){
+async function runTask({ buildType, beta, betaUi, compress }){
     const ReactLibName = REACT_LIB_MAP[buildType];
     const isQuick = buildType === 'quick';
     let tasks  = [];
     
+    // 安装nanachi-compress-loader包
+    if (compress) {
+        const compressLoaderName = 'nanachi-compress-loader';
+        try {
+            nodeResolve.sync(compressLoaderName, { basedir: process.cwd() });
+        } catch (e) {
+            let spinner = ora(chalk.green.bold(`正在安装${compressLoaderName}`)).start();
+            utils.installer(
+                compressLoaderName,
+                '--save-dev'
+            );
+            spinner.succeed(chalk.green.bold(`${compressLoaderName}安装成功`));
+        }
+    }
 
     if (betaUi) {
         downloadSchneeUI();

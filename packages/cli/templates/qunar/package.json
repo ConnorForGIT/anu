@@ -6,11 +6,12 @@
     "nanachi": {
         "alias": {
             "@assets": "source/assets",
+            "@syntaxComponents": "source/pages/syntax/components",
             "@common": "source/common"
         }
     },
     "dependencies": {
-        "regenerator-runtime": "^0.12.1"
+        "regenerator-runtime": "0.12.1"
     },
     "devDependencies": {
         "eslint": "^5.16.0",

@@ -4,12 +4,13 @@
     "nanachi_project": true,
     "name": "qunar",
     "nanachi": {
-        "alias":  {
-            "@assets":"source/assets"
+        "alias": {
+            "@assets": "source/assets",
+            "@common": "source/common"
         }
     },
     "dependencies": {
-        "regenerator-runtime": "^0.12.1"
+        "regenerator-runtime": "0.12.1"
     },
     "devDependencies": {
         "eslint": "^5.16.0",
