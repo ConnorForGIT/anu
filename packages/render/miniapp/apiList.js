@@ -208,6 +208,7 @@ export var otherApis = {
     hideShareMenu: true,
     updateShareMenu: true,
     getShareInfo: true,
+    share: true,
     chooseAddress: true,
     addCard: true,
     openCard: true,
