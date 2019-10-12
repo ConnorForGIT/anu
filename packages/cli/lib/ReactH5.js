@@ -1,5 +1,5 @@
 /**
- * 运行于webview的React by 司徒正美 Copyright 2019-09-23T03
+ * 运行于webview的React by 司徒正美 Copyright 2019-10-09T07
  * IE9+
  */
 
@@ -3102,7 +3102,6 @@
         dom._reactInternalFiber = null;
     }
 
-    var noop$1 = function noop$$1() {};
     var fakeApp = {
         app: {
             globalData: {}
@@ -3121,10 +3120,6 @@
                 instance = fiber.child.stateNode;
             } else {
                 instance = fiber.child.child.stateNode;
-            }
-            if (instance.componentDidMount) {
-                instance.$$componentDidMount = instance.componentDidMount;
-                instance.componentDidMount = null;
             }
         }
         return instance;
@@ -3162,7 +3157,7 @@
                     console.log("fiber.disposed by nanachi");
                     continue;
                 }
-                if (fiber.child && fiber.child.name === fiber.name && fiber.type.name == 'Injector') {
+                if (fiber.child && fiber.type.wrappedComponent) {
                     instance = fiber.child.stateNode;
                 } else {
                     instance = getWrappedComponent(fiber, instance);
@@ -3170,11 +3165,6 @@
                 instance.wx = wx;
                 wx.reactInstance = instance;
                 updateMiniApp(instance);
-                if (instance.$$componentDidMount) {
-                    instance.$$componentDidMount();
-                    instance.componentDidMount = instance.$$componentDidMount;
-                    delete instance.$$componentDidMount;
-                }
                 return instances.splice(i, 1);
             }
         }
@@ -3210,17 +3200,17 @@
         return createElement(clazz, props);
     }
     function handleSuccess(options) {
-        var success = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : noop$1;
-        var complete = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : noop$1;
-        var resolve = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : noop$1;
+        var success = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : noop;
+        var complete = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : noop;
+        var resolve = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : noop;
         success(options);
         complete(options);
         resolve(options);
     }
     function handleFail(options) {
-        var fail = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : noop$1;
-        var complete = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : noop$1;
-        var reject = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : noop$1;
+        var fail = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : noop;
+        var complete = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : noop;
+        var reject = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : noop;
         fail(options);
         complete(options);
         reject(options);

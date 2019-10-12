@@ -1,8 +1,6 @@
-import { hasOwnProperty, typeNumber, isFn, get } from 'react-core/util';
+import { hasOwnProperty, typeNumber, isFn, get, noop } from 'react-core/util';
 import { createElement } from 'react-core/createElement';
 import { Renderer } from 'react-core/createRenderer';
-
-const noop = () => {};
 
 var fakeApp = {
     app: {
@@ -23,13 +21,9 @@ export function getWrappedComponent(fiber, instance) {
     var ctor = instance.constructor;
     if (ctor.WrappedComponent) {
         if (ctor.contextTypes) {
-            instance =  fiber.child.stateNode;
+            instance = fiber.child.stateNode;
         } else {
             instance = fiber.child.child.stateNode;
-        }
-        if(instance.componentDidMount){
-            instance.$$componentDidMount = instance.componentDidMount
-            instance.componentDidMount = null
         }
     } 
     return instance;
@@ -96,8 +90,8 @@ export function refreshComponent (instances, wx, uuid) {
                console.log("fiber.disposed by nanachi");
                continue;
             }
-            //处理mobx
-            if(fiber.child && fiber.child.name === fiber.name && fiber.type.name == 'Injector'){
+            //处理mobx //fiber.type.name == 'Injector' && fiber.child.name === fiber.name会被压缩掉
+            if(fiber.child && fiber.type.wrappedComponent){
                 instance = fiber.child.stateNode;
             } else {
                 // 处理redux与普通情况
@@ -107,11 +101,6 @@ export function refreshComponent (instances, wx, uuid) {
             instance.wx = wx;
             wx.reactInstance = instance;
             updateMiniApp(instance);
-            if(instance.$$componentDidMount){
-               instance.$$componentDidMount();
-               instance.componentDidMount = instance.$$componentDidMount ;
-               delete instance.$$componentDidMount;
-            }
             return instances.splice(i, 1);
         }
     }
